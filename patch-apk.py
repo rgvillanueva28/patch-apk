@@ -621,6 +621,15 @@ def disableApkSplitting(baseapkdir):
     for el in elsToRemove:
         appEl.remove(el)
     
+    # Clean up <manifest> tag
+    root = tree.getroot()
+    if ns + "isSplitRequired" in root.attrib:
+        del root.attrib[ns + "isSplitRequired"]
+    if ns + "requiredSplitTypes" in root.attrib:
+        del root.attrib[ns + "requiredSplitTypes"]
+    if ns + "splitTypes" in root.attrib:
+        del root.attrib[ns + "splitTypes"]
+
     # Save the updated AndroidManifest.xml
     tree.write(os.path.join(baseapkdir, "AndroidManifest.xml"), encoding="utf-8", xml_declaration=True)
 
