@@ -17,6 +17,10 @@ An APK patcher, for use with [objection](https://github.com/sensepost/objection)
 
 ### Changelog ###
 
+* **10th October 2024:**
+  * Added mult-user support. If the apk file path can't be found for the default user, it will try other users
+  * Remove split-apk tags from <manifest>. Doesn't seem to be documented, but Android verifies these too.
+  
 * **22nd February 2023:** Took over project and added various features:
   * Merged modifications from @jseigelis's fork
   * Removed support for outdated objection versions
