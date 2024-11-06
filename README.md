@@ -18,6 +18,9 @@ An APK patcher, for use with [objection](https://github.com/sensepost/objection)
 ### Changelog ###
 
 * **10th October 2024:**
+  * Added option for remote devices.
+
+* **10th October 2024:**
   * Added mult-user support. If the apk file path can't be found for the default user, it will try other users
   * Remove split-apk tags from <manifest>. Doesn't seem to be documented, but Android verifies these too.
   
@@ -42,6 +45,12 @@ Install the target Android application on your device and connect it to your com
 
 ```
 python3 patch-apk.py {package-name}
+```
+
+For remote device:
+```
+python3 patch-apk.py -r {IP_Address:PORT} {package-name}
+# python3 patch-apk.py -r 192.168.1.123:5037 com.app.name
 ```
 
 The package-name parameter can be the fully-qualified package name of the Android app, such as `com.google.android.youtube`, or a partial package name, such as `tube`.

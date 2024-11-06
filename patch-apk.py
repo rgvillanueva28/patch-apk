@@ -27,16 +27,18 @@ def main():
     apktoolVersion = getApktoolVersion()
     print(f"Using apktool v{apktoolVersion}")
     
+    remote = args.remote
+    
     # Verify the package name and ensure it's installed (also supports partial package names)
-    pkgname = verifyPackageName(args.pkgname)
+    pkgname = verifyPackageName(args.pkgname, remote)
     
     # Get the APK path(s) from the device
-    current_user, apkpaths = getAPKPathsForPackage(pkgname)
+    current_user, apkpaths = getAPKPathsForPackage(pkgname,remote)
     
     # Create a temp directory to work from
     with tempfile.TemporaryDirectory() as tmppath:
         # Get the APK to patch. Combine app bundles/split APKs into a single APK.
-        apkfile = getTargetAPK(pkgname, apkpaths, tmppath, args.disable_styles_hack, args.extract_only)
+        apkfile = getTargetAPK(pkgname, apkpaths, tmppath, remote, args.disable_styles_hack, args.extract_only,)
         
         # Save the APK if requested
         if args.save_apk is not None or args.extract_only:
@@ -67,11 +69,19 @@ def main():
         
         # Uninstall the original package from the device
         print(f"\n[+] Uninstalling the original package from the device. (user: {current_user})")
-        assertSubprocessSuccessfulRun(["adb", "uninstall", "--user", current_user, pkgname])
+        if remote:
+            ip, port = remote.split(":")
+            assertSubprocessSuccessfulRun(["adb", "-H", ip, "-P", port, "uninstall", "--user", current_user, pkgname])
+        else:
+            assertSubprocessSuccessfulRun(["adb", "uninstall", "--user", current_user, pkgname])
         
         # Install the patched APK
         print(f"\n[+] Installing the patched APK to the device. (user: {current_user})")
-        assertSubprocessSuccessfulRun(["adb", "install", "--user", current_user, apkfile])
+        if remote:
+            ip, port = remote.split(":")
+            assertSubprocessSuccessfulRun(["adb", "-H", ip, "-P", port, "install", "--user", current_user, apkfile])
+        else:
+            assertSubprocessSuccessfulRun(["adb", "install", "--user", current_user, apkfile])
         
         # Done
         print("\n[+] Done")
@@ -127,6 +137,7 @@ def getArgs():
         parser.add_argument("--disable-styles-hack", help="Disable the styles hack that removes duplicate entries from res/values/styles.xml.", action="store_true")
         parser.add_argument("--debug-output", help="Enable debug output.", action="store_true")
         parser.add_argument("-v", "--verbose", help="Enable verbose output.", action="store_true")
+        parser.add_argument("-r", "--remote", help="Use a remote device.", type=str, metavar="IP:PORT")
         parser.add_argument("pkgname", help="The name, or partial name, of the package to patch (e.g. com.foo.bar).")
         
         # Store the parsed args
@@ -242,10 +253,14 @@ def signAndZipAlign(baseapkdir, baseapkfilename):
 # on the device or if an exact match is not found presents the options to
 # the user for selection.
 ####################
-def verifyPackageName(pkgname):
+def verifyPackageName(pkgname, remote):
     # Get a list of installed packages matching the given name
     packages = []
-    proc = subprocess.run(["adb", "shell", "pm", "list", "packages"], stdout=subprocess.PIPE)
+    if remote:
+        ip, port = remote.split(":")
+        proc = subprocess.run(["adb", "-H", ip, "-P", port, "shell", "pm", "list", "packages"], stdout=subprocess.PIPE)
+    else:
+        proc = subprocess.run(["adb", "shell", "pm", "list", "packages"], stdout=subprocess.PIPE)
     if proc.returncode != 0:
         abort("Error: Failed to run 'adb shell pm list packages'.")
     out = proc.stdout.decode("utf-8")
@@ -277,13 +292,21 @@ def verifyPackageName(pkgname):
 ####################
 # Get the APK path(s) on the device for the given package name.
 ####################
-def getAPKPathsForPackage(pkgname, current_user = "0", users_to_try = None):
+def getAPKPathsForPackage(pkgname, remote, current_user = "0", users_to_try = None):
     print(f"\n[+] Retrieving APK path(s) for package: {pkgname} for user {current_user}")
     paths = []
-    proc = subprocess.run(["adb", "shell", "pm", "path", "--user", current_user, pkgname], stdout=subprocess.PIPE)
+    if remote:
+        ip, port = remote.split(":")
+        proc = subprocess.run(["adb", "-H", ip, "-P", port, "shell", "pm", "path", "--user", current_user, pkgname], stdout=subprocess.PIPE)
+    else:
+        proc = subprocess.run(["adb", "shell", "pm", "path", "--user", current_user, pkgname], stdout=subprocess.PIPE)
     if proc.returncode != 0:
         if not users_to_try:
-            proc = subprocess.run(["adb", "shell", "pm", "list", "users"], stdout=subprocess.PIPE)
+            if remote:
+                ip, port = remote.split(":")
+                proc = subprocess.run(["adb", "-H", ip, "-P", port, "shell", "pm", "list", "users"], stdout=subprocess.PIPE)
+            else:
+                proc = subprocess.run(["adb", "shell", "pm", "list", "users"], stdout=subprocess.PIPE)
             out = proc.stdout.decode("utf-8")
 
             pattern = r'UserInfo{(\d+):'
@@ -312,7 +335,7 @@ def getAPKPathsForPackage(pkgname, current_user = "0", users_to_try = None):
 # Pull the APK file(s) for the package and return the local file path to work with.
 # If the package is an app bundle/split APK, combine the APKs into a single APK.
 ####################
-def getTargetAPK(pkgname, apkpaths, tmppath, disableStylesHack, extract_only):
+def getTargetAPK(pkgname, apkpaths, tmppath, remote, disableStylesHack, extract_only):
     # Pull the APKs from the device
     print("")
     bar = Bar('[+] Pulling APK file(s) from device', max=len(apkpaths))
@@ -325,7 +348,11 @@ def getTargetAPK(pkgname, apkpaths, tmppath, disableStylesHack, extract_only):
         verboseOutput += f"[+] Pulled: {pkgname}-{baseapkname}\n"
         bar.next()
         # assertSubprocessSuccessfulRun(["adb", "pull", remotepath, localapks[-1]])
-        assertSubprocessSuccessfulRun(["adb", "pull", remotepath, localapks[-1]] )
+        if remote:
+            ip, port = remote.split(":")
+            assertSubprocessSuccessfulRun(["adb", "-H", ip, "-P", port, "pull", remotepath, localapks[-1]] )
+        else:
+            assertSubprocessSuccessfulRun(["adb", "pull", remotepath, localapks[-1]] )
     
     bar.finish()
     verbosePrint(verboseOutput.rstrip())
